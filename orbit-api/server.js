@@ -33,7 +33,7 @@ app.use(cookieParser());
 
 app.use(
   session({
-    store: new redisStore({ host: 'localhost', port: 6379, client: redisClient, ttl: process.env.SESSION_MAX_AGE }),
+    store: new redisStore({ host: 'localhost', port: 6379, client: redisClient, ttl: process.env.REDIS_SESSION_AGE }),
     name:'_academystore',
     secret: process.env.SESSION_SECRET,
     resave: false,
@@ -193,7 +193,7 @@ app.post('/api/signup', async (req, res) => {
 });
 
 app.post('/api/logout', (req, res) => {
-  console.log( "req.session.user._id", req.session);
+  
     redisClient.smembers(`sessions:${req.session.user._id}`, function(err, sessionIds) {
     if (err) {
       return res.status(400).json({
@@ -201,20 +201,22 @@ app.post('/api/logout', (req, res) => {
       });
     }
     if(sessionIds.length > 0){
-      // console.log("session of a user ", `sessions:${req.session.user._id}`)
-      console.log("logging all the sessions for ", sessionIds)
        // Delete all sessions for a user
       redisClient.del.apply(redisClient, sessionIds);
     }
   });
-  req.session.destroy(err => {
-    if (err) {
-      return res.status(400).json({
-        message: 'There was a problem logging out'
-      });
-    }
-    res.json({ message: 'Log out successful' });
-  });
+
+  setTimeout(() => {
+    redisClient.del(`sessions:${req.session.user._id}`);
+    req.session.destroy(err => {
+      if (err) {
+        return res.status(400).json({
+          message: 'There was a problem logging out'
+        });
+      }
+      res.json({ message: 'Log out successful' });
+    });
+  },200);
 });
 
 const requireAuth = (req, res, next) => {
