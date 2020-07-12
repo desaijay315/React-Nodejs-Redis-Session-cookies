@@ -14,15 +14,16 @@ const dashboardData = require('./data/dashboard');
 const User = require('./data/User');
 const InventoryItem = require('./data/InventoryItem');
 
-const FileStore = require('session-file-store')(session);
-
 const { hashPassword, verifyPassword } = require('./util');
 
 const app = express();
 
 
-redisClient.on('error', (err) => {
-  console.log('Redis error: ', err);
+redisClient.on('error', function (err) {
+  console.log('could not establish a connection with redis. ' + err);
+});
+redisClient.on('connect', function (err) {
+  console.log('connected to redis successfully');
 });
 
 app.use(cors());
@@ -58,6 +59,19 @@ app.use(csrfProtection);
 app.get('/api/csrf-token', (req, res) => {
   res.json({ csrfToken: req.csrfToken() });
 });
+
+app.use((req,res,next) => {
+  console.log(req.session)
+  console.log(req.session);
+  // console.log(req.session.user._id);
+  const sessionKey = `sess:${req.session.id}`;
+  redisClient.get(sessionKey, (err, data) => {
+    console.log('session data in redis:', data)
+  });
+
+  
+  next()
+})
 
 app.post('/api/authenticate', async (req, res) => {
   try {
@@ -96,6 +110,7 @@ app.post('/api/authenticate', async (req, res) => {
       };
 
       req.session.user = userInfo;
+      redisClient.sadd(`sessions:${userInfo._id}`,"sess:" + req.session.id);
 
       res.json({
         message: 'Authentication successful!',
@@ -178,6 +193,20 @@ app.post('/api/signup', async (req, res) => {
 });
 
 app.post('/api/logout', (req, res) => {
+  console.log( "req.session.user._id", req.session);
+    redisClient.smembers(`sessions:${req.session.user._id}`, function(err, sessionIds) {
+    if (err) {
+      return res.status(400).json({
+        message: 'There was a problem logging out'
+      });
+    }
+    if(sessionIds.length > 0){
+      // console.log("session of a user ", `sessions:${req.session.user._id}`)
+      console.log("logging all the sessions for ", sessionIds)
+       // Delete all sessions for a user
+      redisClient.del.apply(redisClient, sessionIds);
+    }
+  });
   req.session.destroy(err => {
     if (err) {
       return res.status(400).json({
